@@ -1,5 +1,5 @@
 /*
- * Authors: Colton Patch, Ping
+ * Authors: Colton Patch, Ping Tontrasathien
  */
 
 #include <phase1.h>
