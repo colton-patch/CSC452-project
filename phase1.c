@@ -11,9 +11,9 @@ struct pcb {
 	char name[MAXNAME];
 	int priority;
 	int processState; // 0-ready, 1-running, 2-blocked
-	USLOSS_context context;
+	USLOSS_context *context;
 	int (*startFunc)(void *);
-	void * arg;
+	void *arg;
 	struct pcb *parent;
 	// each process points to its youngest child, which points to its next older sibling and so on
 	struct pcb *youngestChild;
@@ -22,12 +22,14 @@ struct pcb {
 
 // global variables
 int curId = 1; // The ID of the next process
-
+struct pcb *pcbTable; // table of PCBs
+struct pcb *curProc; // currently running process
 
 
 void phase1_init(void) {
 	// create table
-	struct pcb pcbTable[MAXPROC];
+	struct pcb newTable[MAXPROC];
+	pcbTable = &newTable[0];
 
 	// make pcb entry for init
 	pcbTable[0].pid = curId;
@@ -62,8 +64,22 @@ void dumpProcesses(void) {
 }
 
 void TEMP_switchTo(int pid) {
-
+	int slot = pid % MAXPROC;
+	oldProc = curProc;
+	curProc = &pcbTable[slot];
+	USLOSS_ContextSwitch(oldProc->context, curProc->context);
 }
+
+static void startFuncWrapper() {
+	int (*startFunc)(void *) = curProc->startFunc;
+	void *arg = curProc -> arg;
+	int status = (*startFunc)(arg);
+	quit(status);
+}
+
+static void startFuncInit() {
+	//int retval = spork("testcase_main", &testcase_main, NULL, );
+}  
 
 
 
