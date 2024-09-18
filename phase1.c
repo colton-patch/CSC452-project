@@ -33,6 +33,7 @@ struct pcb {
 int curId = 1; // The ID of the next process
 struct pcb *pcbTable; // table of PCBs
 struct pcb *curProc; // currently running process
+char initStack[USLOSS_MIN_STACK];
 
 
 /*
@@ -57,9 +58,7 @@ void phase1_init(void) {
 	curId++;
 
 	// initialize context for init
-	// --THIS MAY BE IN THE WRONG PLACE-- can we malloc() here?
-	void *newStack = malloc(USLOSS_MIN_STACK);
-	USLOSS_ContextInit(pcbTable[0].context, newStack, USLOSS_MIN_STACK, NULL, &startFuncWrapper);
+	USLOSS_ContextInit(pcbTable[0].context, initStack, USLOSS_MIN_STACK, NULL, &startFuncWrapper);
 
 	// restore interrupts
 	USLOSS_PsrSet(prevPsr);
