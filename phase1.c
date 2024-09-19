@@ -30,7 +30,7 @@ struct pcb {
 
 
 // global variables
-int curId = 1; // The ID of the next process
+int nextId = 1; // The ID of the next process
 struct pcb *pcbTable; // table of PCBs
 struct pcb *curProc; // currently running process
 char initStack[USLOSS_MIN_STACK];
@@ -50,12 +50,12 @@ void phase1_init(void) {
 	pcbTable = &newTable[0];
 
 	// make pcb entry for init
-	pcbTable[0].pid = curId;
+	pcbTable[0].pid = nextId;
 	strcpy(pcbTable[0].name, "init");
 	pcbTable[0].priority = 6;
 	pcbTable[0].startFunc = &startFuncInit; // init's start function
 	pcbTable[0].arg = NULL;
-	curId++;
+	nextId++;
 
 	// initialize context for init
 	USLOSS_ContextInit(pcbTable[0].context, initStack, USLOSS_MIN_STACK, NULL, &startFuncWrapper);
@@ -104,9 +104,12 @@ void quit(int status) {
 	USLOSS_PsrSet(prevPsr);
 }
 
+/*
+* int getpid(void) - returns the PID of the currently running process.
+*/
 int getpid(void) {
 	checkForKernelMode();
-
+	return curProc->pid;
 }
 
 void dumpProcesses(void) {
