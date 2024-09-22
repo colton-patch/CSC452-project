@@ -12,6 +12,7 @@ void startFuncWrapper(void);
 int startFuncInit(void);
 void checkForKernelMode(void);
 unsigned int disableInterrupts(void);
+void dispatcher(void);
 
 // structure for a process control block. Contains PID, name, priority, current context, the process' 
 // start function and argument, and pointers to its parent, youngest child, and next older sibling
@@ -30,11 +31,11 @@ struct pcb {
 
 
 // global variables
-int nextId = 1; // The ID of the next process
+int nextId = 0; // The ID of the next process
 struct pcb *pcbTable; // table of PCBs
 struct pcb *curProc; // currently running process
 char initStack[USLOSS_MIN_STACK];
-
+struct pcb *queue1, *queue2, *queue3, *queue4, *queue5, *queue6; // queues for each priority
 
 /*
 * void phase1_init(void) - creates the PCB table and the PCB structure for the 
@@ -64,15 +65,53 @@ void phase1_init(void) {
 	USLOSS_PsrSet(prevPsr);
 }
 
-int spork(char *name, int(*func)(void *), void *arg, int stacksize, int priority) {
+
+/*
+* int spork(char *name, int(*func)(void *), void *arg, int stackSize, int priority)
+*	- creates a child process of the current process
+*/
+int spork(char *name, int(*func)(void *), void *arg, int stackSize, int priority) {
 	// make sure in kernel mode and disable interrupts
 	checkForKernelMode();
 	unsigned int prevPsr = disableInterrupts();
-	
+
+	// check for reasonable stack size
+	if ( stackSize < USLOSS_MIN_STACK) {
+                return -2;
+        }
+
+	// check if pcbTable is not full, priority is in range, start function and name is not null, name is not too long
+        if ( nextId == MAXPROC || (priority < 1 || priority > 5) || (func == NULL || name == NULL || strlen(name) > MAXNAME)) {
+		return -1;
+	}
+
+ 	// create a new process
+	struct pcb *newProc = malloc(sizeof(struct pcb));
+	newProc->pid = nextId;
+    	strcpy(newProc->name, name);
+    	newProc->priority = priority;
+    	newProc->startFunc = func;
+   	newProc->arg = arg;
+  	newPCB->parent = curProc; // set parent to current process
+   	newPCB->nextOlderSibling = curProc->youngestChild; // set older sibling to the youngest child of parent;	
+	nextId++;
+
+	// update the youngest child of parent
+	curProc->youngestChild = newProc;
+
+	// add to table
+	int slot = nextId % MAXPROC;
+	pcbTable[slot] = newProc;
+
+	// call dispatcher
+	dispatcher();
 
 	// restore interrupts
 	USLOSS_PsrSet(prevPsr);
+
+	return newProc->pid;
 }
+
 
 int join(int *status) {
 	// make sure in kernel mode and disable interrupts
@@ -186,6 +225,6 @@ unsigned int disableInterrupts(void) {
 	return prevPsr;
 }
 
-
+void dispatcher() {}
 
 
