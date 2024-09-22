@@ -129,7 +129,7 @@ int join(int *status) {
 	}
 
 	// fill status
-	//status = 	
+	//status = ??
 
 	// restore interrupts
 	USLOSS_PsrSet(prevPsr);
@@ -142,7 +142,8 @@ void quit_phase_1a(int status, int switchToPid) {
 	checkForKernelMode();
 	unsigned int prevPsr = disableInterrupts();
 
-	//
+	// context switch
+	//TEMP_switchTO(curProc->parent->pid);
 
 	// restore interrupts
 	USLOSS_PsrSet(prevPsr);
@@ -153,6 +154,8 @@ void quit(int status) {
 	checkForKernelMode();
 	unsigned int prevPsr = disableInterrupts();
 	
+	// context switch
+	//TEMP_switchTO(curProc->parent->pid);
 
 	// restore interrupts
 	USLOSS_PsrSet(prevPsr);
@@ -166,11 +169,20 @@ int getpid(void) {
 	return curProc->pid;
 }
 
+/*
+* void dumpProcesses(void) - prints out process infromation from the process table, in a human-readable format. 
+*/
 void dumpProcesses(void) {
 	// make sure in kernel mode and disable interrupts
 	checkForKernelMode();
 	unsigned int prevPsr = disableInterrupts();
+
+	// header
+	printf("%-4s %-5s %-14s %-9s%s\n", "PID", "PPID", "NAME", "PRIORITY", "STATE");
 	
+	// processes
+	for (int i = 0; i < nextID; i++) {
+	printf("%-4d %-5d %-14s %9d\n", pcbTable[i].pid, pcbTable[i].parent->pid, pcbTable[i].name, pcbTable[i].priority);
 
 	// restore interrupts
 	USLOSS_PsrSet(prevPsr);
