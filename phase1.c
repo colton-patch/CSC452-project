@@ -12,6 +12,7 @@ void startFuncWrapper(void);
 int startFuncInit(void);
 void checkForKernelMode(void);
 unsigned int disableInterrupts(void);
+void dispatcher(void);
 
 // structure for a process control block. Contains PID, name, priority, current context, the process' 
 // start function and argument, and pointers to its parent, youngest child, and next older sibling
@@ -30,11 +31,11 @@ struct pcb {
 
 
 // global variables
-int nextId = 1; // The ID of the next process
+int nextId = 0; // The ID of the next process
 struct pcb *pcbTable; // table of PCBs
 struct pcb *curProc; // currently running process
 char initStack[USLOSS_MIN_STACK];
-
+struct pcb *queue1, *queue2, *queue3, *queue4, *queue5, *queue6; // queues for each priority
 
 /*
 * void phase1_init(void) - creates the PCB table and the PCB structure for the 
@@ -64,31 +65,85 @@ void phase1_init(void) {
 	USLOSS_PsrSet(prevPsr);
 }
 
-int spork(char *name, int(*func)(void *), void *arg, int stacksize, int priority) {
+
+/*
+* int spork(char *name, int(*func)(void *), void *arg, int stackSize, int priority)
+*	- creates a child process of the current process
+*/
+int spork(char *name, int(*func)(void *), void *arg, int stackSize, int priority) {
 	// make sure in kernel mode and disable interrupts
 	checkForKernelMode();
 	unsigned int prevPsr = disableInterrupts();
-	
+
+	// check for reasonable stack size
+	if ( stackSize < USLOSS_MIN_STACK) {
+                return -2;
+        }
+
+	// check if pcbTable is not full, priority is in range, start function and name is not null, name is not too long
+        if ( nextId == MAXPROC || (priority < 1 || priority > 5) || (func == NULL || name == NULL || strlen(name) > MAXNAME) ) {
+		return -1;
+	}
+
+ 	// create a new process
+	struct pcb *newProc = malloc(sizeof(struct pcb));
+	newProc->pid = nextId;
+    	strcpy(newProc->name, name);
+    	newProc->priority = priority;
+    	newProc->startFunc = func;
+   	newProc->arg = arg;
+  	newPCB->parent = curProc; // set parent to current process
+   	newPCB->nextOlderSibling = curProc->youngestChild; // set older sibling to the youngest child of parent;	
+	nextId++;
+
+	// update the youngest child of parent
+	curProc->youngestChild = newProc;
+
+	// add to table
+	int slot = nextId % MAXPROC;
+	pcbTable[slot] = newProc;
+
+	// call dispatcher
+	// dispatcher(); nothing happens in phase1a
 
 	// restore interrupts
 	USLOSS_PsrSet(prevPsr);
+
+	return newProc->pid;
 }
+
 
 int join(int *status) {
 	// make sure in kernel mode and disable interrupts
 	checkForKernelMode();
 	unsigned int prevPsr = disableInterrupts();
 	
+	// check invalid arguments passed to the function
+	if ( status == NULL ) {
+		return -3;
+	}
+
+	// check the process does not have any children
+	if ( curProc->youngestChild == NULL ) {
+		return -2;
+	}
+
+	// fill status
+	//status = ??
 
 	// restore interrupts
 	USLOSS_PsrSet(prevPsr);
+	
+	return curProc->youngestChild->pid;
 }
 
 void quit_phase_1a(int status, int switchToPid) {
 	// make sure in kernel mode and disable interrupts
 	checkForKernelMode();
 	unsigned int prevPsr = disableInterrupts();
-	
+
+	// context switch
+	//TEMP_switchTO(curProc->parent->pid);
 
 	// restore interrupts
 	USLOSS_PsrSet(prevPsr);
@@ -99,6 +154,8 @@ void quit(int status) {
 	checkForKernelMode();
 	unsigned int prevPsr = disableInterrupts();
 	
+	// context switch
+	//TEMP_switchTO(curProc->parent->pid);
 
 	// restore interrupts
 	USLOSS_PsrSet(prevPsr);
@@ -113,11 +170,20 @@ int getpid(void) {
 }
 
 
+/*
+* void dumpProcesses(void) - prints out process infromation from the process table, in a human-readable format. 
+*/
 void dumpProcesses(void) {
 	// make sure in kernel mode and disable interrupts
 	checkForKernelMode();
 	unsigned int prevPsr = disableInterrupts();
+
+	// header
+	printf("%-4s %-5s %-14s %-9s%s\n", "PID", "PPID", "NAME", "PRIORITY", "STATE");
 	
+	// processes
+	for (int i = 0; i < nextID; i++) {
+	printf("%-4d %-5d %-14s %9d\n", pcbTable[i].pid, pcbTable[i].parent->pid, pcbTable[i].name, pcbTable[i].priority);
 
 	// restore interrupts
 	USLOSS_PsrSet(prevPsr);
@@ -188,5 +254,6 @@ unsigned int disableInterrupts(void) {
 }
 
 
+//void dispatcher() {} for phase1b
 
 
