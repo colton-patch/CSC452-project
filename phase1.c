@@ -81,7 +81,7 @@ int spork(char *name, int(*func)(void *), void *arg, int stackSize, int priority
         }
 
 	// check if pcbTable is not full, priority is in range, start function and name is not null, name is not too long
-        if ( nextId == MAXPROC || (priority < 1 || priority > 5) || (func == NULL || name == NULL || strlen(name) > MAXNAME)) {
+        if ( nextId == MAXPROC || (priority < 1 || priority > 5) || (func == NULL || name == NULL || strlen(name) > MAXNAME) ) {
 		return -1;
 	}
 
@@ -104,7 +104,7 @@ int spork(char *name, int(*func)(void *), void *arg, int stackSize, int priority
 	pcbTable[slot] = newProc;
 
 	// call dispatcher
-	dispatcher();
+	// dispatcher(); nothing happens in phase1a
 
 	// restore interrupts
 	USLOSS_PsrSet(prevPsr);
@@ -118,9 +118,20 @@ int join(int *status) {
 	checkForKernelMode();
 	unsigned int prevPsr = disableInterrupts();
 	
+	// check invalid arguments passed to the function
+	if ( status == NULL ) {
+		return -3;
+	}
+
+	// check the process does not have any children
+	if ( curProc->youngestChild == NULL ) {
+		return -2;
+	}
 
 	// restore interrupts
 	USLOSS_PsrSet(prevPsr);
+	
+	return curProc->youngestChild->pid;
 }
 
 void quit_phase_1a(int status, int switchToPid) {
@@ -225,6 +236,7 @@ unsigned int disableInterrupts(void) {
 	return prevPsr;
 }
 
-void dispatcher() {}
+
+//void dispatcher() {} for phase1b
 
 
