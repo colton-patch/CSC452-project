@@ -112,6 +112,7 @@ int getpid(void) {
 	return curProc->pid;
 }
 
+
 void dumpProcesses(void) {
 	// make sure in kernel mode and disable interrupts
 	checkForKernelMode();
