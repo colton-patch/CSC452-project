@@ -128,6 +128,9 @@ int join(int *status) {
 		return -2;
 	}
 
+	// fill status
+	//status = 	
+
 	// restore interrupts
 	USLOSS_PsrSet(prevPsr);
 	
@@ -138,7 +141,8 @@ void quit_phase_1a(int status, int switchToPid) {
 	// make sure in kernel mode and disable interrupts
 	checkForKernelMode();
 	unsigned int prevPsr = disableInterrupts();
-	
+
+	//
 
 	// restore interrupts
 	USLOSS_PsrSet(prevPsr);
