@@ -188,7 +188,7 @@ int join(int *status) {
 	else {
 		prevChild->nextOlderSibling = nextChild->nextOlderSibling;
 	}
-	free(nextChild);
+	free(nextChild->context);
 
 	// decrement number of processes
 	numProcs--;
