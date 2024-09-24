@@ -106,11 +106,11 @@ int spork(char *name, int(*func)(void *), void *arg, int stackSize, int priority
 
 	// check for reasonable stack size
 	if ( stackSize < USLOSS_MIN_STACK) {
-        return -2;
-    }
+		return -2;
+	}
 
 	// check if pcbTable is not full, priority is in range, start function and name is not null, name is not too long
-    if ( numProcs + 1 == MAXPROC || (priority < 1 || priority > 5) || (func == NULL || name == NULL || strlen(name) > MAXNAME) ) {
+	if ( numProcs + 1 == MAXPROC || (priority < 1 || priority > 5) || (func == NULL || name == NULL || strlen(name) > MAXNAME) ) {
 		return -1;
 	}
 
@@ -123,9 +123,9 @@ int spork(char *name, int(*func)(void *), void *arg, int stackSize, int priority
 
  	// define fields
 	pcbTable[slot].pid = nextId;
-    strcpy(pcbTable[slot].name, name);
-    pcbTable[slot].priority = priority;
-    pcbTable[slot].startFunc = func;
+    	strcpy(pcbTable[slot].name, name);
+    	pcbTable[slot].priority = priority;
+    	pcbTable[slot].startFunc = func;
    	pcbTable[slot].arg = arg;
   	pcbTable[slot].parent = curProc; // set parent to current process
    	pcbTable[slot].nextOlderSibling = curProc->youngestChild; // set older sibling to the youngest child of parent;	
@@ -140,9 +140,9 @@ int spork(char *name, int(*func)(void *), void *arg, int stackSize, int priority
 	numProcs++;
 
 	// update the youngest child of parent
-	if (curProc->youngestChild != NULL)
+	if (curProc->youngestChild != NULL) {
 		pcbTable[slot].nextOlderSibling = curProc->youngestChild;
-
+	}
 	curProc->youngestChild = &pcbTable[slot];
 
 	// call dispatcher
@@ -163,12 +163,12 @@ int join(int *status) {
 	// make sure in kernel mode and disable interrupts
 	checkForKernelMode();
 	unsigned int prevPsr = disableInterrupts();
-	
+
 	// check invalid arguments passed to the function
-	if ( status == NULL ) {
+	if ( status == NULL) {
 		return -3;
 	}
-
+	
 	// check the process does not have any children
 	if ( curProc->youngestChild == NULL ) {
 		return -2;
@@ -176,7 +176,7 @@ int join(int *status) {
 
 	// find dead child
 	struct pcb *nextChild = curProc->youngestChild;
-	struct pcb *prevChild;
+	struct pcb *prevChild = NULL;
 	while (nextChild->nextOlderSibling != NULL && nextChild->status == NULL) {
 		prevChild = nextChild;
 		nextChild = nextChild->nextOlderSibling;
@@ -215,6 +215,7 @@ void quit_phase_1a(int status, int switchToPid) {
 	checkForKernelMode();
 	unsigned int prevPsr = disableInterrupts();
 
+	
 	// check that all children have been joined
 	if (curProc->youngestChild != NULL) {
 		USLOSS_Trace("ERROR: attempting to quit process %s without joining children", curProc->name);
@@ -328,7 +329,8 @@ int startFuncInit(void) {
 	TEMP_switchTo(2); // only for phase1a - manually switch to testcase_main
 
 	int joinVal = 0;
-	int *joinStatus = 0;
+	int zero = 0;
+	int *joinStatus = &zero;
 	while (joinVal != -2) {
 		joinVal = join(joinStatus);
 	}
