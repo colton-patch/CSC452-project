@@ -1,5 +1,8 @@
 /*
  * Authors: Colton Patch, Ping Tontrasathien
+ * phase1.c - Implements phase1a; defines functions for initializing the PCB table, creating
+ * 	a new child process, joining dead processes with their parents, and quitting the current process.
+ * 	Processes are switched to manually as there is no dispatcher.
  */
 
 #include <phase1.h>
@@ -12,8 +15,9 @@
 //
 void startFuncWrapper(void);
 int startFuncInit(void);
-void checkForKernelMode(void);
+int checkForKernelMode(void);
 unsigned int disableInterrupts(void);
+void restoreInterrupts(unsigned int prevPsr);
 //void dispatcher(void);
 
 //
@@ -24,6 +28,7 @@ struct pcb {
 	int pid; // -1 if no process
 	char name[MAXNAME];
 	int priority;
+	int state; // 0 = Runnable, 1 = Running, 2 = Terminated
 	int status; // return status, NULL if still alive
 	USLOSS_Context *context;
 	int (*startFunc)();
@@ -43,6 +48,7 @@ struct pcb *curProc; // currently running process
 int numProcs = 0; // number of processes
 char initStack[USLOSS_MIN_STACK]; // stack for init
 USLOSS_Context initContext; // context for init
+char *stateArr[3] = {"Runnable", "Running", "Terminated"};
 // struct pcb *queue1, *queue2, *queue3, *queue4, *queue5, *queue6; // queues for each priority
 
 //
@@ -55,7 +61,10 @@ USLOSS_Context initContext; // context for init
 */
 void phase1_init(void) {
 	// make sure in kernel mode and disable interrupts
-	checkForKernelMode();
+	if (checkForKernelMode() == 0) {
+		USLOSS_Trace("ERROR: Someone attempted to call phase1_init while in user mode!\n");
+		USLOSS_Halt(1);
+	}
 	unsigned int prevPsr = disableInterrupts();
 
 	//make an empty pcb at 0
@@ -68,6 +77,7 @@ void phase1_init(void) {
 	pcbTable[1].priority = 6;
 	pcbTable[1].startFunc = &startFuncInit; // init's start function
 	pcbTable[1].arg = NULL;
+	pcbTable[1].state = 0;
 	pcbTable[1].parent = &pcbTable[0];	
 	pcbTable[1].context = &initContext;
 	nextId++;
@@ -85,14 +95,14 @@ void phase1_init(void) {
 	numProcs++;
 
 	// restore interrupts
-	USLOSS_PsrSet(prevPsr);
+	restoreInterrupts(prevPsr);
 
 }
 
 
 /*
 * int spork(char *name, int(*func)(void *), void *arg, int stackSize, int priority)
-*	- creates a child process of the current process
+*	- creates a child process of the current process and returns its pid
 *	name - name of the new process
 *	func - start function of the new process
 *	arg - argument for the new process' start function
@@ -101,7 +111,10 @@ void phase1_init(void) {
 */
 int spork(char *name, int(*func)(void *), void *arg, int stackSize, int priority) {
 	// make sure in kernel mode and disable interrupts
-	checkForKernelMode();
+	if (checkForKernelMode() == 0) {
+		USLOSS_Trace("ERROR: Someone attempted to call spork while in user mode!\n");
+		USLOSS_Halt(1);
+	}
 	unsigned int prevPsr = disableInterrupts();
 
 	// check for reasonable stack size
@@ -110,7 +123,7 @@ int spork(char *name, int(*func)(void *), void *arg, int stackSize, int priority
 	}
 
 	// check if pcbTable is not full, priority is in range, start function and name is not null, name is not too long
-	if ( numProcs + 1 == MAXPROC || (priority < 1 || priority > 5) || (func == NULL || name == NULL || strlen(name) > MAXNAME) ) {
+	if ( numProcs == MAXPROC || (priority < 1 || priority > 5) || (func == NULL || name == NULL || strlen(name) > MAXNAME) ) {
 		return -1;
 	}
 
@@ -123,11 +136,13 @@ int spork(char *name, int(*func)(void *), void *arg, int stackSize, int priority
 
  	// define fields
 	pcbTable[slot].pid = nextId;
-    	strcpy(pcbTable[slot].name, name);
-    	pcbTable[slot].priority = priority;
-    	pcbTable[slot].startFunc = func;
+    strcpy(pcbTable[slot].name, name);
+    pcbTable[slot].priority = priority;
+    pcbTable[slot].startFunc = func;
    	pcbTable[slot].arg = arg;
+	pcbTable[slot].state = 0;
   	pcbTable[slot].parent = curProc; // set parent to current process
+	pcbTable[slot].youngestChild = NULL;
    	pcbTable[slot].nextOlderSibling = curProc->youngestChild; // set older sibling to the youngest child of parent;	
 	nextId++;
 
@@ -149,7 +164,7 @@ int spork(char *name, int(*func)(void *), void *arg, int stackSize, int priority
 	// dispatcher(); nothing happens in phase1a
 
 	// restore interrupts
-	USLOSS_PsrSet(prevPsr);
+	restoreInterrupts(prevPsr);
 
 	return pcbTable[slot].pid;
 }
@@ -161,7 +176,10 @@ int spork(char *name, int(*func)(void *), void *arg, int stackSize, int priority
 */
 int join(int *status) {
 	// make sure in kernel mode and disable interrupts
-	checkForKernelMode();
+	if (checkForKernelMode() == 0) {
+		USLOSS_Trace("ERROR: Someone attempted to call join while in user mode!\n");
+		USLOSS_Halt(1);
+	}
 	unsigned int prevPsr = disableInterrupts();
 
 	// check invalid arguments passed to the function
@@ -177,7 +195,7 @@ int join(int *status) {
 	// find dead child
 	struct pcb *nextChild = curProc->youngestChild;
 	struct pcb *prevChild = NULL;
-	while (nextChild->nextOlderSibling != NULL && nextChild->status == NULL) {
+	while (nextChild->state != 2 && nextChild->nextOlderSibling != NULL) {
 		prevChild = nextChild;
 		nextChild = nextChild->nextOlderSibling;
 	}
@@ -195,11 +213,12 @@ int join(int *status) {
 	}
 	free(nextChild->context);
 
-	// decrement number of processes
+	// set pid to -1 and decrement number of processes
+	nextChild->pid = -1;
 	numProcs--;
 
 	// restore interrupts
-	USLOSS_PsrSet(prevPsr);
+	restoreInterrupts(prevPsr);
 	
 	return deadPid;
 }
@@ -212,24 +231,28 @@ int join(int *status) {
 */
 void quit_phase_1a(int status, int switchToPid) {
 	// make sure in kernel mode and disable interrupts
-	checkForKernelMode();
+	if (checkForKernelMode() == 0) {
+		USLOSS_Trace("ERROR: Someone attempted to call quit_phase_1a while in user mode!\n");
+		USLOSS_Halt(1);
+	}
 	unsigned int prevPsr = disableInterrupts();
 
 	
 	// check that all children have been joined
-	if (curProc->youngestChild != NULL) {
-		USLOSS_Trace("ERROR: attempting to quit process %s without joining children", curProc->name);
+	if (curProc->youngestChild) {
+		USLOSS_Trace("ERROR: Process pid %d called quit() while it still had children.\n", curProc->pid);
 		USLOSS_Halt(1);
 	}
 
-	// save the status
+	// save the status and flag as terminated
 	curProc->status = status;
+	curProc->state = 2;
 
 	// context switch
 	TEMP_switchTo(switchToPid);
 
 	// restore interrupts
-	USLOSS_PsrSet(prevPsr);
+	restoreInterrupts(prevPsr);
 }
 
 // void quit(int status) {
@@ -248,7 +271,10 @@ void quit_phase_1a(int status, int switchToPid) {
 * int getpid(void) - returns the PID of the currently running process.
 */
 int getpid(void) {
-	checkForKernelMode();
+	if (checkForKernelMode() == 0) {
+		USLOSS_Trace("ERROR: Someone attempted to call getpid while in user mode!\n");
+		USLOSS_Halt(1);
+	}
 	return curProc->pid;
 }
 
@@ -258,22 +284,31 @@ int getpid(void) {
 */
 void dumpProcesses(void) {
 	// make sure in kernel mode and disable interrupts
-	checkForKernelMode();
+	if (checkForKernelMode() == 0) {
+		USLOSS_Trace("ERROR: Someone attempted to call dumpProcesses while in user mode!\n");
+		USLOSS_Halt(1);
+	};
 	unsigned int prevPsr = disableInterrupts();
 
 	// header
-	USLOSS_Console("%-4s %-5s %-14s %-9s %s\n", "PID", "PPID", "NAME", "PRIORITY", "STATE");
+	USLOSS_Console("%4s %5s  %-17s %-9s %s\n", "PID", "PPID", "NAME", "PRIORITY", "STATE");
 	
 	// processes
 	for (int i = 0; i < MAXPROC; i++) {
 		if (pcbTable[i].pid != -1) {
 			struct pcb p = pcbTable[i];
-			USLOSS_Console("%-4d %-5d %-14s %-9d %d\n", p.pid, p.parent->pid, p.name, p.priority, p.status);
+			int ppid = (p.pid == 1) ? 0 : p.parent->pid; // make ppid 0 if process it init
+			USLOSS_Console("%4d %5d  %-17s %-9d %s", p.pid, ppid, p.name, p.priority, stateArr[p.state]);
+			// print the status if terminated
+			if (p.state == 2) {
+				USLOSS_Console("(%d)", p.status);
+			}
+			USLOSS_Console("\n");
 		}
 	}
 
 	// restore interrupts
-	USLOSS_PsrSet(prevPsr);
+	restoreInterrupts(prevPsr);
 }
 
 /*
@@ -282,21 +317,27 @@ void dumpProcesses(void) {
 */
 void TEMP_switchTo(int pid) {
 	// make sure in kernel mode and disable interrupts
-	checkForKernelMode();
+	if (checkForKernelMode() == 0) {
+		USLOSS_Trace("ERROR: Someone attempted to call TEMP_switchTo while in user mode!\n");
+		USLOSS_Halt(1);
+	};
 	unsigned int prevPsr = disableInterrupts();
 	
 	// switch to new process with given pid
 	int slot = pid % MAXPROC;
 	struct pcb *oldProc = curProc;
 	curProc = &pcbTable[slot];
+	curProc->state = 1; // set new to Running
+
 	if (pid == 1) { // don't store old proc on first process
 		USLOSS_ContextSwitch(NULL, curProc->context);
 	} else {
+		oldProc->state = (oldProc->state == 2) ? 2 : 0; // set old to Runnable if not terminated
 		USLOSS_ContextSwitch(oldProc->context, curProc->context);
 	}
 
 	// restore interrupts
-	USLOSS_PsrSet(prevPsr);
+	restoreInterrupts(prevPsr);
 }
 
 /*
@@ -309,8 +350,12 @@ void startFuncWrapper(void) {
 	
 	// enable interrupts before calling start function
 	unsigned int prevPsr = USLOSS_PsrGet();
-	USLOSS_PsrSet(prevPsr | USLOSS_PSR_CURRENT_INT);
+	if (USLOSS_PsrSet(prevPsr | USLOSS_PSR_CURRENT_INT) == USLOSS_ERR_INVALID_PSR) {
+		USLOSS_Trace("ERROR: Invalid PSR");
+		USLOSS_Halt(1);
+	}
 
+	// cal start function and quit when it returns
 	int status = (*startFunc)(arg);
 	quit_phase_1a(status, curProc->parent->pid);
 }
@@ -326,28 +371,30 @@ int startFuncInit(void) {
 	phase5_start_service_processes();
 
 	spork("testcase_main", &testcase_main, NULL, USLOSS_MIN_STACK, 3);
+	USLOSS_Console("Phase 1A TEMPORARY HACK: init() manually switching to testcase_main() after using spork() to create it.\n");
 	TEMP_switchTo(2); // only for phase1a - manually switch to testcase_main
 
-	int joinVal = 0;
-	int zero = 0;
-	int *joinStatus = &zero;
-	while (joinVal != -2) {
-		joinVal = join(joinStatus);
-	}
+	// when testcase_main returns
+	USLOSS_Console("Phase 1A TEMPORARY HACK: testcase_main() returned, simulation will now halt.\n");
+	USLOSS_Halt(0);
 
-	USLOSS_Trace("ERROR: init process has no children");
+	// int joinVal = 0;
+	// int zero = 0;
+	// int *joinStatus = &zero;
+	// while (joinVal != -2) {
+	// 	joinVal = join(joinStatus);
+	// }
+
+	// USLOSS_Trace("ERROR: init process has no children\n");
 	return 1;
 }
 
 /*
-* void checkForKernelMode(void) - Halts if not currently in kernel mode 
+* int checkForKernelMode(void) - returns 0 if not in kernel mode
 */
-void checkForKernelMode(void) {
+int checkForKernelMode(void) {
 	// check if not in kernel mode
-	if ( (USLOSS_PSR_CURRENT_MODE & USLOSS_PsrGet()) == 0 ) {
-		USLOSS_Trace("ERROR: kernel function called from user mode");
-		USLOSS_Halt(1);
-	}
+	return (USLOSS_PSR_CURRENT_MODE & USLOSS_PsrGet()); 
 }
 
 /*
@@ -356,8 +403,23 @@ void checkForKernelMode(void) {
 */
 unsigned int disableInterrupts(void) {
 	unsigned int prevPsr = USLOSS_PsrGet();
-	USLOSS_PsrSet(prevPsr & ~USLOSS_PSR_CURRENT_INT);
+	if (USLOSS_PsrSet(prevPsr & ~USLOSS_PSR_CURRENT_INT) == USLOSS_ERR_INVALID_PSR) {
+		USLOSS_Trace("ERROR: Invalid PSR");
+		USLOSS_Halt(1);
+	}
 	return prevPsr;
+}
+
+/*
+* void restoreInterrupts(unsigned int prevPsr) - restores the state of interrupts to its
+*	previous value, as passed by prevPsr
+*	prevPsr - the previous value of the psr to restore to
+*/
+void restoreInterrupts(unsigned int prevPsr) {
+	if (USLOSS_PsrSet(prevPsr) == USLOSS_ERR_INVALID_PSR) {
+		USLOSS_Trace("ERROR: Invalid PSR");
+		USLOSS_Halt(1);
+	}
 }
 
 
