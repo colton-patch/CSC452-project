@@ -58,12 +58,17 @@ void phase1_init(void) {
 	checkForKernelMode();
 	unsigned int prevPsr = disableInterrupts();
 
+	//make an empty pcb at 0
+	pcbTable[0].pid = 0;
+	pcbTable[0].youngestChild = &pcbTable[1];
+
 	// make pcb entry for init
 	pcbTable[1].pid = nextId;
-	strcpy(pcbTable[0].name, "init");
+	strcpy(pcbTable[1].name, "init");
 	pcbTable[1].priority = 6;
 	pcbTable[1].startFunc = &startFuncInit; // init's start function
 	pcbTable[1].arg = NULL;
+	pcbTable[1].parent = &pcbTable[0];	
 	pcbTable[1].context = &initContext;
 	nextId++;
 
@@ -256,12 +261,14 @@ void dumpProcesses(void) {
 	unsigned int prevPsr = disableInterrupts();
 
 	// header
-	USLOSS_Console("%-4s %-5s %-14s %-9s%s\n", "PID", "PPID", "NAME", "PRIORITY", "STATE");
+	USLOSS_Console("%-4s %-5s %-14s %-9s %s\n", "PID", "PPID", "NAME", "PRIORITY", "STATE");
 	
 	// processes
 	for (int i = 0; i < MAXPROC; i++) {
-		if (pcbTable[i].pid != -1)
-			USLOSS_Console("%-4d %-5d %-14s %9d\n", pcbTable[i].pid, pcbTable[i].parent->pid, pcbTable[i].name, pcbTable[i].priority);
+		if (pcbTable[i].pid != -1) {
+			struct pcb p = pcbTable[i];
+			USLOSS_Console("%-4d %-5d %-14s %-9d %d\n", p.pid, p.parent->pid, p.name, p.priority, p.status);
+		}
 	}
 
 	// restore interrupts
