@@ -15,6 +15,7 @@
 //
 void startFuncWrapper(void);
 int startFuncInit(void *);
+int testcase_mainWrapper(void *);
 int checkForKernelMode(void);
 unsigned int disableInterrupts(void);
 void restoreInterrupts(unsigned int prevPsr);
@@ -370,13 +371,9 @@ int startFuncInit(void *) {
 	phase4_start_service_processes();
 	phase5_start_service_processes();
 
-	spork("testcase_main", &testcase_main, NULL, USLOSS_MIN_STACK, 3);
+	spork("testcase_main", &testcase_mainWrapper, NULL, USLOSS_MIN_STACK, 3);
 	USLOSS_Console("Phase 1A TEMPORARY HACK: init() manually switching to testcase_main() after using spork() to create it.\n");
 	TEMP_switchTo(2); // only for phase1a - manually switch to testcase_main
-
-	// when testcase_main returns
-	USLOSS_Console("Phase 1A TEMPORARY HACK: testcase_main() returned, simulation will now halt.\n");
-	USLOSS_Halt(0);
 
 	// int joinVal = 0;
 	// int zero = 0;
@@ -386,6 +383,19 @@ int startFuncInit(void *) {
 	// }
 
 	// USLOSS_Trace("ERROR: init process has no children\n");
+	return 1;
+}
+
+/*
+* int testcase_mainWrapper(void *) - wrapper for testcase_main. Calls testcase_main and halts
+*	when it returns. Exists to be passed to spork() so the type is compatible.
+*/
+int testcase_mainWrapper(void *) {
+	testcase_main();
+	// when testcase_main returns
+	USLOSS_Console("Phase 1A TEMPORARY HACK: testcase_main() returned, simulation will now halt.\n");
+	USLOSS_Halt(0);
+
 	return 1;
 }
 
