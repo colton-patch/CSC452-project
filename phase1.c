@@ -14,7 +14,7 @@
 // prototypes
 //
 void startFuncWrapper(void);
-int startFuncInit(void);
+int startFuncInit(void *);
 int checkForKernelMode(void);
 unsigned int disableInterrupts(void);
 void restoreInterrupts(unsigned int prevPsr);
@@ -31,7 +31,7 @@ struct pcb {
 	int state; // 0 = Runnable, 1 = Running, 2 = Terminated
 	int status; // return status, NULL if still alive
 	USLOSS_Context *context;
-	int (*startFunc)();
+	int (*startFunc)(void *);
 	void *arg;
 	struct pcb *parent;
 	// each process points to its youngest child, which points to its next older sibling and so on
@@ -89,7 +89,7 @@ void phase1_init(void) {
 	}
 
 	// initialize context for init
-	USLOSS_ContextInit(pcbTable[1].context, initStack, USLOSS_MIN_STACK, NULL, &startFuncInit);
+	USLOSS_ContextInit(pcbTable[1].context, initStack, USLOSS_MIN_STACK, NULL, &startFuncWrapper);
 
 	// increment number of processes
 	numProcs++;
@@ -364,7 +364,7 @@ void startFuncWrapper(void) {
 * void startFuncInit(void) - The start function for the init process. It calls spork() to
 *	create the testcase_main process, then repeatedly calls join() until it returns -2.
 */
-int startFuncInit(void) {
+int startFuncInit(void *) {
 	phase2_start_service_processes();
 	phase3_start_service_processes();
 	phase4_start_service_processes();
