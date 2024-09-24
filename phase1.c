@@ -26,30 +26,30 @@ void restoreInterrupts(unsigned int prevPsr);
 // start function and argument, and pointers to its parent, youngest child, and next older sibling
 //
 struct pcb {
-	int pid; // -1 if no process
 	char name[MAXNAME];
+	int pid; // -1 if no process
 	int priority;
 	int state; // 0 = Runnable, 1 = Running, 2 = Terminated
 	int status; // return status, NULL if still alive
-	USLOSS_Context *context;
 	int (*startFunc)(void *);
 	void *arg;
 	struct pcb *parent;
 	// each process points to its youngest child, which points to its next older sibling and so on
 	struct pcb *youngestChild;
 	struct pcb *nextOlderSibling;
+	USLOSS_Context *context;
 };
 
 //
 // global variables
 //
 int nextId = 1; // The ID of the next process
+int numProcs = 0; // number of processes
 struct pcb pcbTable[MAXPROC]; // table of PCBs
 struct pcb *curProc; // currently running process
-int numProcs = 0; // number of processes
 char initStack[USLOSS_MIN_STACK]; // stack for init
-USLOSS_Context initContext; // context for init
 char *stateArr[3] = {"Runnable", "Running", "Terminated"};
+USLOSS_Context initContext; // context for init
 // struct pcb *queue1, *queue2, *queue3, *queue4, *queue5, *queue6; // queues for each priority
 
 //
@@ -68,17 +68,13 @@ void phase1_init(void) {
 	}
 	unsigned int prevPsr = disableInterrupts();
 
-	//make an empty pcb at 0
-	pcbTable[0].pid = 0;
-	pcbTable[0].youngestChild = &pcbTable[1];
-
 	// make pcb entry for init
-	pcbTable[1].pid = nextId;
 	strcpy(pcbTable[1].name, "init");
+	pcbTable[1].pid	=  nextId;
 	pcbTable[1].priority = 6;
+	pcbTable[1].state = 0;
 	pcbTable[1].startFunc = &startFuncInit; // init's start function
 	pcbTable[1].arg = NULL;
-	pcbTable[1].state = 0;
 	pcbTable[1].parent = &pcbTable[0];	
 	pcbTable[1].context = &initContext;
 	nextId++;
@@ -97,7 +93,6 @@ void phase1_init(void) {
 
 	// restore interrupts
 	restoreInterrupts(prevPsr);
-
 }
 
 
@@ -137,14 +132,14 @@ int spork(char *name, int(*func)(void *), void *arg, int stackSize, int priority
 
  	// define fields
 	pcbTable[slot].pid = nextId;
-    strcpy(pcbTable[slot].name, name);
-    pcbTable[slot].priority = priority;
-    pcbTable[slot].startFunc = func;
-   	pcbTable[slot].arg = arg;
+	strcpy(pcbTable[slot].name, name);
+	pcbTable[slot].priority = priority;
+	pcbTable[slot].startFunc = func;
+	pcbTable[slot].arg = arg;
 	pcbTable[slot].state = 0;
-  	pcbTable[slot].parent = curProc; // set parent to current process
+	pcbTable[slot].parent = curProc; // set parent to current process
 	pcbTable[slot].youngestChild = NULL;
-   	pcbTable[slot].nextOlderSibling = curProc->youngestChild; // set older sibling to the youngest child of parent;	
+	pcbTable[slot].nextOlderSibling = curProc->youngestChild; // set older sibling to the youngest child of parent;	
 	nextId++;
 
 	// initialize context
@@ -296,8 +291,8 @@ void dumpProcesses(void) {
 	
 	// processes
 	for (int i = 0; i < MAXPROC; i++) {
-		if (pcbTable[i].pid != -1) {
-			struct pcb p = pcbTable[i];
+		struct pcb p = pcbTable[i];
+		if (p.pid != -1) {
 			int ppid = (p.pid == 1) ? 0 : p.parent->pid; // make ppid 0 if process it init
 			USLOSS_Console("%4d %5d  %-17s %-9d %s", p.pid, ppid, p.name, p.priority, stateArr[p.state]);
 			// print the status if terminated
